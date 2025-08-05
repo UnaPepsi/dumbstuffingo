@@ -1,0 +1,9 @@
+services:
+  asydfghjasfdqghwfh:
+    enviroment:
+      SECRET: ${SECRET}
+    ports:
+      - 6969:6969
+    volumes:
+      - /jjajjaajjaajajaj/urls.db:/app/urls.db
+    build: .

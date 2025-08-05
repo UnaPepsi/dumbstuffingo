@@ -1,0 +1,51 @@
+<html>
+		<head>
+				<meta property="og:type" content="website">
+				<meta property="og:url" content="https://short.guimx.codes">
+				<meta property="og:title" content="acortador insano">
+				<meta property="og:description" content="solo pa mi pa ti no">
+				<meta property="og:image" content="https://i.imgur.com/mSMieOS.png">
+				<meta name="theme-color" data-react-helmet="true" content="#2400FF">
+				<title>jasgdhjasgdhjgajwdhghjguguwt5712356152673512653671253671527635765d67as5d675as67d57wrtud7qatd67qw5gd567</title>
+
+		</head>
+		<body>
+				<h1>pon en link perro</h1>
+				<input type="text" placeholder="el link!!!!" id="laurl">
+				<br>
+				<input type="text" placeholder="la cosa esa!!!!!" id="cosa">
+				<br>
+				<button id="jajaxd" type="submit">subir perro</button>
+				<br>
+				<a id="hache2perro"></a>
+				<script>
+						let boton = document.getElementById("jajaxd")	
+						boton.addEventListener("click", async function () {
+								let otracosa = document.getElementById('cosa').value;
+								let url = document.getElementById('laurl').value;
+								await fetch('/shorten', {
+										method: 'POST',
+										headers: {
+												'totp':otracosa,
+												'url':url
+										},
+								})
+										.then(async response => {
+												if (!response.ok){
+														document.getElementById('hache2perro').textContent = 'perro hubo un error jajajaj'
+														document.getElementById('hache2perro').hred = null
+														return
+												}
+												let url = await response.text()
+												document.getElementById('hache2perro').textContent = window.location.href + url
+												document.getElementById('hache2perro').href = window.location.href + url
+										})
+										.catch(async err => {
+												console.log('error perro',err)
+										})
+
+
+					})
+				</script>
+		</body>
+</html>
