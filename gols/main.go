@@ -11,6 +11,8 @@ import (
 func main() {
 	green := "\033[32m"
 	normal := "\033[0m"
+	boldWhite := "\033[1;37m"
+	boldGreen := "\033[1;32m"
 	var colorToUse *string
 	showHidden := slices.Contains(os.Args,"-a")
 	showSize := slices.Contains(os.Args,"-s")
@@ -20,13 +22,22 @@ func main() {
 		log.Fatalf("Couldn't list all items: %v",err.Error())
 	}
 	for _,entry := range entries {
-		if fmt.Sprintf("%c",entry.Name()[0]) == "." && !showHidden{
+		isHidden := fmt.Sprintf("%c",entry.Name()[0]) == "."
+		if isHidden && !showHidden{
 			continue
 		}
 		if entry.IsDir(){
-			colorToUse = &green
+			if isHidden{
+				colorToUse = &boldGreen
+			}else{
+				colorToUse = &green
+			}
 		}else{
-			colorToUse = &normal
+			if isHidden{
+				colorToUse = &boldWhite
+			}else{
+				colorToUse = &normal
+			}
 		}
 		item = entry.Name()
 		if showSize{
