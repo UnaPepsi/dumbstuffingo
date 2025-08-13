@@ -1,0 +1,22 @@
+services:
+  api:
+    build: .
+    ports:
+      80:80
+    enviroment:
+      PG_URL: "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5432/pepito"
+      TOTP_SECRET_REGISTER: ${TOTP_SECRET_REGISTER}
+      PASSWORD_REGISTER: ${PASSWORD_REGISTER}
+      MAX_FILE_SIZE: 1024 #in MB
+      MAX_REQUESTS: 30 #30 requests/minute
+  db:
+    image: postgres:latest
+    enviroment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
