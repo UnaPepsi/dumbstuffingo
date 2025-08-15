@@ -24,6 +24,7 @@ func Listen() error {
 	}
 	maxUploadSize <<= 20
 	mux.HandleFunc("GET /", root)
+	mux.HandleFunc("GET /signup", signup)
 	mux.HandleFunc("GET /dashboard", dashboard)
 	mux.HandleFunc("GET /file/{id}", fetchFile)
 	mux.HandleFunc("POST /auth", auth)
@@ -35,13 +36,16 @@ func Listen() error {
 func root(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w,r,"internal/webfiles/root.html")
 }
+func signup(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w,r,"internal/webfiles/signup.html")
+}
 func dashboard(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w,r,"internal/webfiles/dashboard.html")
 }
 
 func auth(w http.ResponseWriter, r *http.Request) {
 	if IsRateLimited(r.URL.Hostname()){
-		e := responses.ErrorResponse{Message: fmt.Sprintf("Ratelimited",maxUploadSize), Ratelimit: 60} //idc brah
+		e := responses.ErrorResponse{Message: "Ratelimited", Ratelimit: 60} //idc brah
 		responses.SendResponse(&e,&w,http.StatusTooManyRequests)
 		return
 	}
@@ -58,12 +62,11 @@ func auth(w http.ResponseWriter, r *http.Request) {
 	}
 	resp := responses.LoginResponse{Token:token}
 	responses.SendResponse(&resp,&w,http.StatusOK)
-	return
 } 
 
 func register(w http.ResponseWriter, r *http.Request) {
 	if IsRateLimited(r.URL.Hostname()){
-		e := responses.ErrorResponse{Message: fmt.Sprintf("Ratelimited",maxUploadSize), Ratelimit: 60} //idc brah
+		e := responses.ErrorResponse{Message: "Ratelimited", Ratelimit: 60} //idc brah
 		responses.SendResponse(&e,&w,http.StatusTooManyRequests)
 		return
 	}
@@ -83,7 +86,7 @@ func register(w http.ResponseWriter, r *http.Request) {
 
 func upload(w http.ResponseWriter, r *http.Request) {
 	if IsRateLimited(r.URL.Hostname()){
-		e := responses.ErrorResponse{Message: fmt.Sprintf("Ratelimited",maxUploadSize), Ratelimit: 60} //idc brah
+		e := responses.ErrorResponse{Message: "Ratelimited", Ratelimit: 60} //idc brah
 		responses.SendResponse(&e,&w,http.StatusTooManyRequests)
 		return
 	}
@@ -117,7 +120,7 @@ func upload(w http.ResponseWriter, r *http.Request) {
 
 func fetchFile(w http.ResponseWriter, r *http.Request){
 	if IsRateLimited(r.URL.Hostname()){
-		e := responses.ErrorResponse{Message: fmt.Sprintf("Ratelimited",maxUploadSize), Ratelimit: 60} //idc brah
+		e := responses.ErrorResponse{Message: "Ratelimited", Ratelimit: 60} //idc brah
 		responses.SendResponse(&e,&w,http.StatusTooManyRequests)
 		return
 	}
