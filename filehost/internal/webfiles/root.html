@@ -43,26 +43,51 @@
 								<input type="text" placeholder="Username" id="username" required>
 								<input type="password" placeholder="Password" id="password" required>
 								<input type="text" placeholder="TOTP" id="totp" required>
-								<button id="login-button" type="submit" onclick="login()">Login</button>
+								<button id="login-button" type="button" onclick="login()">Login</button>
 						</form>
 				</div>
 				<script>
-						const login = () => {
-								fetch('/auth', {
+						//https://stackoverflow.com/questions/5968196/how-do-i-check-if-a-cookie-exists
+						function getCookie(name) {
+								var match = document.cookie.match(RegExp('(?:^|;\\s*)' + name + '=([^;]*)')); 
+								return match ? match[1] : null;
+						}
+						let token = getCookie('token')
+						if (token != null) {
+								fetch('/validatetoken', {
+										method: 'POST',
+										headers: {'token':token}
+								},
+								).then(resp => {
+										if (!resp.ok){
+												document.cookie = "token=; expires=Thu, 01 Jan 1970 00:00:01 GMT;"
+												return
+										}
+										window.location = '/dashboard'
+
+								}).catch(err => {
+										console.log(err)
+								})
+						}
+						const login = async () => {
+								await fetch('/auth', {
 										method: 'POST',
 										headers: {
 												'username': document.getElementById('username').value,
 												'password': document.getElementById('password').value,
 												'totp': document.getElementById('totp').value
 										},
-								}).then(resp => {
+								}).then(async resp => {
 										if (!resp.ok){
-												console.log(resp.json())
+												console.log(await resp.json())
 												alert('An error ocurred, check console log')
 												return
 										}
-										const data = resp.json()
-										consle.log(data.token)
+										const data = await resp.json()
+										console.log(data)
+										let expireDate = new Date();
+										expireDate.setTime(expireDate.getTime()+1000*60*60*24*365) //1 year
+										document.cookie = "token=" + data.token + "; expires=" + expireDate.toUTCString() + ";"
 										alert('Login success')
 								}).catch(err => {
 										console.log(err)

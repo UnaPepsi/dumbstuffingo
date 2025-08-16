@@ -2,12 +2,11 @@ package responses
 
 import (
 	"net/http"
-	"fmt"
 	"log"
 	"encoding/json"
 )
 type Response interface {
-	ErrorResponse | LoginResponse | FileUploadedResponse
+	ErrorResponse | LoginResponse | FileUploadedResponse | RegisterResponse
 }
 
 type ErrorResponse struct {
@@ -20,16 +19,17 @@ func (e *ErrorResponse) Error() string{
 }
 
 func SendResponse[T Response](r *T, w *http.ResponseWriter, statusCode int16){
-	out, err := json.Marshal(*r)
-	if err != nil {
+	(*w).Header().Set("Content-Type", "application/json")
+	(*w).WriteHeader(int(statusCode))
+	if err := json.NewEncoder(*w).Encode(*r); err != nil{
 		log.Fatalf("An error ocurred during json parsing: %v", err.Error())
 	}
-	(*w).WriteHeader(int(statusCode))
-	fmt.Fprint(*w,out)
-
 }
 type LoginResponse struct {
 	Token string `json:"token"`
+}
+type RegisterResponse struct {
+	Totp string `json:"totp"`
 }
 
 type FileUploadedResponse struct {

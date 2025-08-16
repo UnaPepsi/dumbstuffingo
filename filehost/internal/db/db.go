@@ -63,7 +63,7 @@ func createTebles() (err error) {
 		name TEXT NOT NULL,
 		oid OID NOT NULL,
 		content_type TEXT NOT NULL,
-		user TEXT REFERENCES users(username)
+		owner TEXT REFERENCES users(username)
 	);
 	`
 	_, err = conn.Exec(ctx,files)
@@ -101,8 +101,9 @@ func Close() error{
 func Authenticate(username string, password string, totpCode string) (token string, err error) {
 	sha256Bytes := sha256.Sum256([]byte(password))
 	password = hex.EncodeToString(sha256Bytes[:]) //https://stackoverflow.com/questions/40632802/how-to-convert-byte-array-to-string-in-go
+	log.Printf("Someone tried logging in: %v, %v, %v\n",username,password,totpCode)
 	var totpSecret string
-	err = conn.QueryRow(ctx, "SELECT token,totp FROM users WHERE username=$1 AND password=$1",username,password).Scan(&token,&totpSecret)
+	err = conn.QueryRow(ctx, "SELECT token,totp FROM users WHERE username=$1 AND password=$2",username,password).Scan(&token,&totpSecret)
 	if err != nil {
 		return
 	}
@@ -118,7 +119,12 @@ func Authenticate(username string, password string, totpCode string) (token stri
 	return
 }
 
-func Register(username string, password string, totpCode string, passwordRegister string) (err error) {
+func ValidateToken(token string) (err error){
+	err = conn.QueryRow(ctx, "SELECT token FROM users WHERE token=$1",token).Scan(&token)
+	return
+}
+
+func Register(username string, password string, totpCode string, passwordRegister string) (totpSecret string, err error) {
 	sha256Bytes := sha256.Sum256([]byte(password))
 	password = hex.EncodeToString(sha256Bytes[:]) //https://stackoverflow.com/questions/40632802/how-to-convert-byte-array-to-string-in-go
 	totpCodeGenerated, err := totp.GenerateCode(totpSecretRegister, time.Now())
@@ -128,12 +134,14 @@ func Register(username string, password string, totpCode string, passwordRegiste
 	}
 	if totpCodeGenerated != totpCode {
 		err = errors.New("invalid TOTP code")
+		return
 	}
 	if passwordRegister != passwordRegisterCode{
 		err = errors.New("invalid register password")
+		return
 	}
-	var usernameFetch int64
-	err = conn.QueryRow(ctx,"SELECT COUNT(username) FROM users WHERE username = $1",username).Scan(&usernameFetch)
+	var usernameFetch string
+	err = conn.QueryRow(ctx,"SELECT username FROM users WHERE username = $1",username).Scan(&usernameFetch)
 	if err == nil {
 		err = errors.New("user already exists")
 		return
@@ -142,11 +150,12 @@ func Register(username string, password string, totpCode string, passwordRegiste
 		Issuer: username,
 		AccountName: strings.ToUpper(username),
 	})
+	totpSecret = key.Secret()
 	if err != nil {
 		log.Printf("An error ocurred generating TOTP secret: %v", err.Error())
 		return
 	}
-	_,err = conn.Exec(ctx, "INSERT INTO users VALUES ($1, $2, $3, $4)",username,password,key.Secret(),genToken(username,password))
+	_,err = conn.Exec(ctx, "INSERT INTO users VALUES ($1, $2, $3, $4)",username,password,totpSecret,genToken(username,password))
 	if err != nil {
 		log.Printf("An error ocurred saving the user to database: %v",err.Error())
 	}
@@ -202,7 +211,7 @@ func SaveFile(file multipart.File, fileHeader *multipart.FileHeader, token strin
 		log.Printf("An error ocurred trying to close file: %v", err.Error())
         return
     }
-    err = tx.QueryRow(ctx, "INSERT INTO files (name, oid, content_type, user) VALUES ($1, $2, $3, $4)", fileHeader.Filename, oid, fileHeader.Header.Get("Content-Type"),username).Scan(&id)
+    err = tx.QueryRow(ctx, "INSERT INTO files (name, oid, content_type, owner) VALUES ($1, $2, $3, $4)", fileHeader.Filename, oid, fileHeader.Header.Get("Content-Type"),username).Scan(&id)
     if err != nil {
 		log.Printf("An error ocurred trying to insert metadata: %v", err.Error())
         return

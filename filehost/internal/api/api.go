@@ -18,7 +18,8 @@ func Listen() error {
 	if !exists {
 		log.Fatal("Missing \"MAX_UPLOAD_SIZE\" env")
 	}
-	maxUploadSize, err := strconv.ParseInt(maxUploadSizeString,10,64)
+	var err error
+	maxUploadSize, err = strconv.ParseInt(maxUploadSizeString,10,64)
 	if err != nil {
 		log.Fatalf("Error trying to set max upload size: %v", err.Error())
 	}
@@ -28,6 +29,7 @@ func Listen() error {
 	mux.HandleFunc("GET /dashboard", dashboard)
 	mux.HandleFunc("GET /file/{id}", fetchFile)
 	mux.HandleFunc("POST /auth", auth)
+	mux.HandleFunc("POST /validatetoken", validateToken)
 	mux.HandleFunc("POST /register", register)
 	mux.HandleFunc("POST /upload", upload)
 	return http.ListenAndServe("0.0.0.0:80", mux)
@@ -54,16 +56,33 @@ func auth(w http.ResponseWriter, r *http.Request) {
 	password := headers.Get("password")
 	totpCode := headers.Get("totp")
 	token, err := db.Authenticate(username, password, totpCode) 
-	w.Header().Set("Content-Type","application/json")
+	
 	if err != nil {
 		e := responses.ErrorResponse{Message: "Wrong Credentials", Ratelimit: 0}
 		responses.SendResponse(&e,&w,http.StatusUnauthorized)
+		log.Printf("Someone tried logging in and failed: %v", err.Error())
 		return
 	}
 	resp := responses.LoginResponse{Token:token}
 	responses.SendResponse(&resp,&w,http.StatusOK)
 } 
 
+func validateToken(w http.ResponseWriter, r *http.Request) {
+	if IsRateLimited(r.URL.Hostname()){
+		e := responses.ErrorResponse{Message: "Ratelimited", Ratelimit: 60} //idc brah
+		responses.SendResponse(&e,&w,http.StatusTooManyRequests)
+		return
+	}
+	token := r.Header.Get("token")
+	log.Printf("Someone tried validating token: %v", token)
+	if err := db.ValidateToken(token); err != nil{
+		log.Printf("Someone tried validating token and failed: %v", err)
+		e := responses.ErrorResponse{Message: "Invalid token", Ratelimit: 0} //idc brah
+		responses.SendResponse(&e,&w,http.StatusUnauthorized)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
 func register(w http.ResponseWriter, r *http.Request) {
 	if IsRateLimited(r.URL.Hostname()){
 		e := responses.ErrorResponse{Message: "Ratelimited", Ratelimit: 60} //idc brah
@@ -75,13 +94,16 @@ func register(w http.ResponseWriter, r *http.Request) {
 	password := headers.Get("password")
 	totpCodeRegister := headers.Get("totpCodeRegister")
 	passwordRegister := headers.Get("passwordRegister")
-	err := db.Register(username,password,totpCodeRegister,passwordRegister)
+	totp, err := db.Register(username,password,totpCodeRegister,passwordRegister)
 	if err != nil {
+		log.Printf("Someone tried registering and failed: %v", err.Error())
 		e := responses.ErrorResponse{Message: "Wrong Register Credentials", Ratelimit: 0}
 		responses.SendResponse(&e,&w,http.StatusUnauthorized)
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	log.Printf("Someone registered, totp secret: %v",totp)
+	resp := responses.RegisterResponse{Totp:totp}
+	responses.SendResponse(&resp,&w,http.StatusOK)
 }
 
 func upload(w http.ResponseWriter, r *http.Request) {
