@@ -7,11 +7,11 @@ import (
 )
 
 func main() {
-	err := db.Initialize()
-	if err != nil {
+	log.Println("Creating tables")
+	if err := db.Initialize(); err != nil {
 		log.Fatalf("An error ocurred while trying to connect to postgres: %v", err.Error())
 	}
-	defer db.Close()
+	log.Println("Started listening")
 	if err := api.Listen(); err != nil {
 		log.Fatalf("An error ocurred while listening to API: %v", err.Error())
 	}

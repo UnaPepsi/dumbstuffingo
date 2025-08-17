@@ -65,7 +65,7 @@
 										}
 										const data = resp.json()
 										console.log(data)
-										alert('Register success')
+										alert(`Register success. Your TOTP Secret is ${data.totp}. This will only be shown once!`)
 										window.location = '/'
 								}).catch(err => {
 										console.log(err)

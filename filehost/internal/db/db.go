@@ -18,19 +18,20 @@ import (
 	"os"
 	"strings"
 	"time"
-
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pquerna/otp/totp"
 )
 
-var conn *pgx.Conn
+var pgURL string
 var ctx context.Context
 var totpSecretRegister string
 var passwordRegisterCode string
 func Initialize() (err error) {
 	ctx = context.Background()
-	conn, err = pgx.Connect(ctx, os.Getenv("PG_URL"))
 	var exists bool
+	if pgURL,exists = os.LookupEnv("PG_URL"); !exists {
+		log.Fatal("Missing env variable \"PG_URL\"")
+	}
 	totpSecretRegister, exists = os.LookupEnv("TOTP_SECRET_REGISTER")
 	if !exists {
 		log.Fatal("Missing env variable \"TOTP_SECRET_REGISTER\"")
@@ -39,11 +40,17 @@ func Initialize() (err error) {
 	if !exists {
 		log.Fatal("Missing env variable \"PASSWORD_REGISTER\"")
 	}
-	createTebles()
+	createTables()
 	return
 }
 
-func createTebles() (err error) {
+func createTables() (err error) {
+	//pgxpool should handle pool limits... i think :v
+	pool, err := pgxpool.New(ctx, pgURL)
+	if err != nil {
+		log.Fatalf("Could not connect to database: %v", err.Error())
+	}
+	defer pool.Close()
 	users := `
 	CREATE TABLE IF NOT EXISTS users (
 		username TEXT PRIMARY KEY,
@@ -52,7 +59,7 @@ func createTebles() (err error) {
 		token TEXT NOT NULL
 	);
 	`
-	_, err = conn.Exec(ctx,users)
+	_, err = pool.Exec(ctx,users)
 	if err != nil {
 		log.Fatalf("Could not initialize users table: %v", err.Error())
 		return
@@ -66,7 +73,7 @@ func createTebles() (err error) {
 		owner TEXT REFERENCES users(username)
 	);
 	`
-	_, err = conn.Exec(ctx,files)
+	_, err = pool.Exec(ctx,files)
 	if err != nil {
 		log.Fatalf("Could not initialize files table: %v", err.Error())
 		return
@@ -94,16 +101,17 @@ func genToken(username string, password string) string{
 	return fmt.Sprintf("%v.%v.%v.",usernameEncoded,timeEncoded,hash)
 }
 
-func Close() error{
-	return conn.Close(ctx)
-}
-
 func Authenticate(username string, password string, totpCode string) (token string, err error) {
 	sha256Bytes := sha256.Sum256([]byte(password))
 	password = hex.EncodeToString(sha256Bytes[:]) //https://stackoverflow.com/questions/40632802/how-to-convert-byte-array-to-string-in-go
 	log.Printf("Someone tried logging in: %v, %v, %v\n",username,password,totpCode)
 	var totpSecret string
-	err = conn.QueryRow(ctx, "SELECT token,totp FROM users WHERE username=$1 AND password=$2",username,password).Scan(&token,&totpSecret)
+	pool, err := pgxpool.New(ctx, pgURL)
+	if err != nil{
+		log.Printf("An error ocurred trying to create pool: %v", err.Error())
+		return
+	}
+	err = pool.QueryRow(ctx, "SELECT token,totp FROM users WHERE username=$1 AND password=$2",username,password).Scan(&token,&totpSecret)
 	if err != nil {
 		return
 	}
@@ -120,7 +128,12 @@ func Authenticate(username string, password string, totpCode string) (token stri
 }
 
 func ValidateToken(token string) (err error){
-	err = conn.QueryRow(ctx, "SELECT token FROM users WHERE token=$1",token).Scan(&token)
+	pool, err := pgxpool.New(ctx, pgURL)
+	if err != nil{
+		log.Printf("An error ocurred trying to create pool: %v", err.Error())
+		return
+	}
+	err = pool.QueryRow(ctx, "SELECT token FROM users WHERE token=$1",token).Scan(&token)
 	return
 }
 
@@ -141,7 +154,12 @@ func Register(username string, password string, totpCode string, passwordRegiste
 		return
 	}
 	var usernameFetch string
-	err = conn.QueryRow(ctx,"SELECT username FROM users WHERE username = $1",username).Scan(&usernameFetch)
+	pool, err := pgxpool.New(ctx, pgURL)
+	if err != nil{
+		log.Printf("An error ocurred trying to create pool: %v", err.Error())
+		return
+	}
+	err = pool.QueryRow(ctx,"SELECT username FROM users WHERE username = $1",username).Scan(&usernameFetch)
 	if err == nil {
 		err = errors.New("user already exists")
 		return
@@ -155,7 +173,7 @@ func Register(username string, password string, totpCode string, passwordRegiste
 		log.Printf("An error ocurred generating TOTP secret: %v", err.Error())
 		return
 	}
-	_,err = conn.Exec(ctx, "INSERT INTO users VALUES ($1, $2, $3, $4)",username,password,totpSecret,genToken(username,password))
+	_,err = pool.Exec(ctx, "INSERT INTO users VALUES ($1, $2, $3, $4)",username,password,totpSecret,genToken(username,password))
 	if err != nil {
 		log.Printf("An error ocurred saving the user to database: %v",err.Error())
 	}
@@ -165,12 +183,17 @@ func Register(username string, password string, totpCode string, passwordRegiste
 func SaveFile(file multipart.File, fileHeader *multipart.FileHeader, token string) (id int, err error) {
 	defer file.Close()
 	var username string
-	err = conn.QueryRow(ctx,"SELECT username FROM users WHERE token = $1",token).Scan(&username)
+	pool, err := pgxpool.New(ctx, pgURL)
+	if err != nil{
+		log.Printf("An error ocurred trying to create pool: %v", err.Error())
+		return
+	}
+	err = pool.QueryRow(ctx,"SELECT username FROM users WHERE token = $1",token).Scan(&username)
 	if err != nil{
 		id = -1
 		return
 	}
-    tx, err := conn.Begin(ctx)
+    tx, err := pool.Begin(ctx)
     if err != nil {
 		log.Printf("Could not start transaction: %v", err.Error())
         return
@@ -211,7 +234,7 @@ func SaveFile(file multipart.File, fileHeader *multipart.FileHeader, token strin
 		log.Printf("An error ocurred trying to close file: %v", err.Error())
         return
     }
-    err = tx.QueryRow(ctx, "INSERT INTO files (name, oid, content_type, owner) VALUES ($1, $2, $3, $4)", fileHeader.Filename, oid, fileHeader.Header.Get("Content-Type"),username).Scan(&id)
+    err = tx.QueryRow(ctx, "INSERT INTO files (name, oid, content_type, owner) VALUES ($1, $2, $3, $4) RETURNING id", fileHeader.Filename, oid, fileHeader.Header.Get("Content-Type"),username).Scan(&id)
     if err != nil {
 		log.Printf("An error ocurred trying to insert metadata: %v", err.Error())
         return
@@ -222,7 +245,13 @@ func SaveFile(file multipart.File, fileHeader *multipart.FileHeader, token strin
 func ServeFile(w *http.ResponseWriter, id int) (err error) {
         var oid uint32
         var name, contentType string
-        err = conn.QueryRow(ctx,
+		pool, err := pgxpool.New(ctx, pgURL)
+		if err != nil{
+			log.Printf("An error ocurred trying to create pool: %v", err.Error())
+
+			return
+		}
+        err = pool.QueryRow(ctx,
             `SELECT oid, name, content_type FROM files WHERE id=$1`, id,
         ).Scan(&oid, &name, &contentType)
         if err != nil {
@@ -230,7 +259,7 @@ func ServeFile(w *http.ResponseWriter, id int) (err error) {
 			responses.SendResponse(&e, w, http.StatusNotFound)
             return
         }
-        tx, err := conn.Begin(ctx)
+        tx, err := pool.Begin(ctx)
         if err != nil {
 			log.Printf("An error ocurred during transaction: %v", err.Error())
 			e := responses.ErrorResponse{Message: "Something wrong happened D:", Ratelimit:0}
@@ -283,3 +312,26 @@ func ServeFile(w *http.ResponseWriter, id int) (err error) {
         return tx.Commit(ctx)
     }
 
+func GetFileNames(token string) (ids []int, filenames []string, err error) {
+	pool, err := pgxpool.New(ctx, pgURL)
+	if err != nil{
+		log.Printf("An error ocurred trying to create pool: %v", err.Error())
+		return
+	}
+	sql := `SELECT id, name FROM users
+			JOIN files ON users.username=files.owner
+			WHERE users.token=$1`
+	rows,err := pool.Query(ctx,sql,token)
+	if err != nil {
+		log.Printf("An error ocurred trying to get files: %v", err.Error())
+		return
+	}
+	var id int
+	var filename string
+	for rows.Next() {
+		rows.Scan(&id,&filename)
+		ids = append(ids, id)
+		filenames = append(filenames, filename)
+	}
+	return
+}

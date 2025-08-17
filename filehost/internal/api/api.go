@@ -28,6 +28,7 @@ func Listen() error {
 	mux.HandleFunc("GET /signup", signup)
 	mux.HandleFunc("GET /dashboard", dashboard)
 	mux.HandleFunc("GET /file/{id}", fetchFile)
+	mux.HandleFunc("GET /files", getFiles)
 	mux.HandleFunc("POST /auth", auth)
 	mux.HandleFunc("POST /validatetoken", validateToken)
 	mux.HandleFunc("POST /register", register)
@@ -153,4 +154,21 @@ func fetchFile(w http.ResponseWriter, r *http.Request){
 		return
 	}
 	db.ServeFile(&w, id)
+}
+
+func getFiles(w http.ResponseWriter, r *http.Request) {
+	if IsRateLimited(r.URL.Hostname()){
+		e := responses.ErrorResponse{Message: "Ratelimited", Ratelimit: 60} //idc brah
+		responses.SendResponse(&e,&w,http.StatusTooManyRequests)
+		return
+	}
+	token := r.Header.Get("token")
+	ids, filenames, err := db.GetFileNames(token)
+	if err != nil {
+		e := responses.ErrorResponse{Message: "Invalid token", Ratelimit: 0}
+		responses.SendResponse(&e,&w,http.StatusUnauthorized)
+		return
+	}
+	resp := responses.UploadedFilesResponse{Ids:ids,Filenames:filenames}
+	responses.SendResponse(&resp,&w,http.StatusOK)
 }

@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 )
 type Response interface {
-	ErrorResponse | LoginResponse | FileUploadedResponse | RegisterResponse
+	ErrorResponse | LoginResponse | FileUploadedResponse | RegisterResponse | UploadedFilesResponse
 }
 
 type ErrorResponse struct {
@@ -18,7 +18,7 @@ func (e *ErrorResponse) Error() string{
 	return e.Message
 }
 
-func SendResponse[T Response](r *T, w *http.ResponseWriter, statusCode int16){
+func SendResponse[ResponseType Response](r *ResponseType, w *http.ResponseWriter, statusCode int16){
 	(*w).Header().Set("Content-Type", "application/json")
 	(*w).WriteHeader(int(statusCode))
 	if err := json.NewEncoder(*w).Encode(*r); err != nil{
@@ -34,4 +34,9 @@ type RegisterResponse struct {
 
 type FileUploadedResponse struct {
 	Id int `json:"id"`
+}
+
+type UploadedFilesResponse struct {
+	Ids []int `json:"ids"`
+	Filenames []string `json:"filenames"`
 }
